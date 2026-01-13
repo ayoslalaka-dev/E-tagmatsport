@@ -1,22 +1,19 @@
-import { Sequelize } from 'sequelize';
-import dotenv from 'dotenv';
+import { DataSource } from 'typeorm';
+import { env } from './env';
+import { User } from '../entities/User';
+import { Tender } from '../entities/Tender';
+import { Offer } from '../entities/Offer';
 
-dotenv.config();
-
-const sequelize = new Sequelize(
-    process.env.DB_NAME || 'e_tagmat',
-    process.env.DB_USER || 'postgres',
-    process.env.DB_PASSWORD || 'postgres',
-    {
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432'),
-        dialect: 'postgres',
-        logging: false, // Set to true to see SQL queries
-        define: {
-            timestamps: true,
-            underscored: true,
-        },
-    }
-);
-
-export default sequelize;
+export const AppDataSource = new DataSource({
+    type: 'postgres',
+    host: env.DB_HOST,
+    port: env.DB_PORT,
+    username: env.DB_USER,
+    password: env.DB_PASSWORD,
+    database: env.DB_NAME,
+    synchronize: env.NODE_ENV === 'development', // Auto-sync in dev only
+    logging: env.NODE_ENV === 'development',
+    entities: [User, Tender, Offer],
+    migrations: [],
+    subscribers: [],
+});

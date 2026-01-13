@@ -1,45 +1,108 @@
-import { Request, Response } from 'express';
-import { Tender, User } from '../models';
-import { addDispatchJob } from '../queues/dispatch.queue';
+import { Response, NextFunction } from 'express';
+import { TenderService } from '../services/tender.service';
+import { AuthRequest } from '../middlewares/auth.middleware';
 
-export const createTender = async (req: Request, res: Response) => {
-    try {
-        const { title, description, origin, destination, weight, volume, deadline } = req.body;
-        const shipper_id = (req as any).user.userId;
+const tenderService = new TenderService();
 
-        const tender = await Tender.create({
-            title,
-            description,
-            origin,
-            destination,
-            weight: parseFloat(weight),
-            volume: parseFloat(volume),
-            deadline: new Date(deadline),
-            shipper_id
-        });
+export class TenderController {
+    async create(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
 
-        // Queue the dispatch job in the background
-        await addDispatchJob(tender.id, {
-            origin,
-            destination,
-            weight: parseFloat(weight),
-            volume: parseFloat(volume)
-        });
+            const { type, origine, destination, date, description, budget, weight } = req.body;
 
-        res.status(201).json(tender);
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
+            if (!type || !origine || !destination || !date) {
+                return res.status(400).json({ message: 'Type, origine, destination and date are required' });
+            }
+
+            const tender = await tenderService.create(req.user.id, {
+                type,
+                origine,
+                destination,
+                date: new Date(date),
+                description,
+                budget,
+                weight
+            });
+
+            res.status(201).json(tender);
+        } catch (error) {
+            next(error);
+        }
     }
-};
 
-export const getTenders = async (req: Request, res: Response) => {
-    try {
-        const tensors = await Tender.findAll({
-            include: [{ model: User, as: 'shipper', attributes: ['id', 'name', 'email'] }],
-            order: [['created_at', 'DESC']]
-        });
-        res.json(tensors);
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
+    async findAll(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { statut, type } = req.query;
+            const tenders = await tenderService.findAll({
+                statut: statut as any,
+                type: type as any
+            });
+            res.json(tenders);
+        } catch (error) {
+            next(error);
+        }
     }
-};
+
+    async findById(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const tender = await tenderService.findById(id);
+            res.json(tender);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async findMyTenders(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
+
+            const tenders = await tenderService.findByUser(req.user.id);
+            res.json(tenders);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async update(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
+
+            const { id } = req.params;
+            const tender = await tenderService.update(id, req.user.id, req.body);
+            res.json(tender);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async delete(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
+
+            const { id } = req.params;
+            await tenderService.delete(id, req.user.id);
+            res.status(204).send();
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async getStats(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const stats = await tenderService.getStats();
+            res.json(stats);
+        } catch (error) {
+            next(error);
+        }
+    }
+}

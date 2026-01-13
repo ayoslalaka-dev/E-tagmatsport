@@ -1,61 +1,55 @@
-import { Request, Response } from 'express';
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { User } from '../models';
+import { Request, Response, NextFunction } from 'express';
+import { AuthService } from '../services/auth.service';
+import { AuthRequest } from '../middlewares/auth.middleware';
 
-export const register = async (req: Request, res: Response) => {
-    try {
-        const { email, password, role, name } = req.body;
+const authService = new AuthService();
 
-        const existingUser = await User.findOne({ where: { email } });
-        if (existingUser) {
-            return res.status(400).json({ message: 'User already exists' });
+export class AuthController {
+    async register(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { nom, email, password, role } = req.body;
+
+            if (!nom || !email || !password) {
+                return res.status(400).json({ message: 'Name, email and password are required' });
+            }
+
+            const result = await authService.register({ nom, email, password, role });
+            res.status(201).json(result);
+        } catch (error) {
+            next(error);
         }
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const user = await User.create({
-            email,
-            password: hashedPassword,
-            role,
-            name,
-        });
-
-        res.status(201).json({
-            message: 'User registered',
-            user: { id: user.id, email: user.email, role: user.role }
-        });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
     }
-};
 
-export const login = async (req: Request, res: Response) => {
-    try {
-        const { email, password } = req.body;
+    async login(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { email, password } = req.body;
 
-        const user = await User.findOne({ where: { email } });
+            if (!email || !password) {
+                return res.status(400).json({ message: 'Email and password are required' });
+            }
 
-        if (!user) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+            const result = await authService.login({ email, password });
+            res.json(result);
+        } catch (error) {
+            next(error);
         }
-
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid credentials' });
-        }
-
-        const token = jwt.sign(
-            { userId: user.id, role: user.role },
-            process.env.JWT_SECRET || 'secret',
-            { expiresIn: '24h' }
-        );
-
-        res.json({
-            token,
-            user: { id: user.id, email: user.email, role: user.role, name: user.name }
-        });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
     }
-};
+
+    async getProfile(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
+
+            const user = await authService.getProfile(req.user.id);
+            res.json(user);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async logout(req: Request, res: Response) {
+        // JWT is stateless, so logout is handled client-side
+        res.json({ message: 'Logged out successfully' });
+    }
+}

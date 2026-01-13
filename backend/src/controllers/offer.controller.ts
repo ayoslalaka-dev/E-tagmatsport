@@ -1,48 +1,83 @@
-import { Request, Response } from 'express';
-import { Offer, Tender } from '../models';
-import { OfferStatus } from '../models/Offer';
-import { TenderStatus } from '../models/Tender';
+import { Response, NextFunction } from 'express';
+import { OfferService } from '../services/offer.service';
+import { AuthRequest } from '../middlewares/auth.middleware';
 
-export const submitOffer = async (req: Request, res: Response) => {
-    try {
-        const { tender_id, price, transit_time, remarks } = req.body;
-        const carrier_id = (req as any).user.userId;
+const offerService = new OfferService();
 
-        const offer = await Offer.create({
-            tender_id,
-            carrier_id,
-            price: parseFloat(price),
-            transit_time,
-            remarks,
-            status: OfferStatus.PENDING
-        });
+export class OfferController {
+    async create(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
 
-        res.status(201).json(offer);
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
-    }
-};
+            const { tenderId, prix, delai, commentaire } = req.body;
 
-export const acceptOffer = async (req: Request, res: Response) => {
-    try {
-        const { id } = req.params;
+            if (!tenderId || !prix || !delai) {
+                return res.status(400).json({ message: 'Tender ID, price and delay are required' });
+            }
 
-        const offer = await Offer.findByPk(id);
-        if (!offer) {
-            return res.status(404).json({ message: 'Offer not found' });
+            const offer = await offerService.create(req.user.id, {
+                tenderId,
+                prix,
+                delai,
+                commentaire
+            });
+
+            res.status(201).json(offer);
+        } catch (error) {
+            next(error);
         }
-
-        offer.status = OfferStatus.ACCEPTED;
-        await offer.save();
-
-        // Award the tender
-        await Tender.update(
-            { status: TenderStatus.AWARDED },
-            { where: { id: offer.tender_id } }
-        );
-
-        res.json({ message: 'Offer accepted and tender awarded', offer });
-    } catch (error: any) {
-        res.status(500).json({ message: error.message });
     }
-};
+
+    async findByTender(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { tenderId } = req.params;
+            const offers = await offerService.findByTender(tenderId);
+            res.json(offers);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async findMyOffers(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
+
+            const offers = await offerService.findByUser(req.user.id);
+            res.json(offers);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async accept(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
+
+            const { id } = req.params;
+            const offer = await offerService.accept(id, req.user.id);
+            res.json(offer);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async reject(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authenticated' });
+            }
+
+            const { id } = req.params;
+            const offer = await offerService.reject(id, req.user.id);
+            res.json(offer);
+        } catch (error) {
+            next(error);
+        }
+    }
+}
