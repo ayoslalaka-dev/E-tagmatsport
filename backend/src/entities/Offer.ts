@@ -29,6 +29,14 @@ export class Offer {
     })
     status: OfferStatus;
 
+    @Column({ type: 'jsonb', nullable: true })
+    route: {
+        name: string;
+        latitude: number;
+        longitude: number;
+        type: 'city' | 'country';
+    }[];
+
     @ManyToOne(() => Tender, tender => tender.offers)
     @JoinColumn({ name: 'tenderId' })
     tender: Tender;
