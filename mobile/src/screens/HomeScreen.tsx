@@ -12,8 +12,10 @@ import { Briefcase, Users, TrendingUp, ChevronRight } from 'lucide-react-native'
 import { Theme } from '../theme';
 
 import { getStats } from '../services/stats.service';
+import { useAuthStore } from '../stores/authStore';
 
 export default function HomeScreen({ navigation }: any) {
+    const { user } = useAuthStore();
     const [stats, setStats] = React.useState({ visitors: 0, activeTenders: 0 });
 
     React.useEffect(() => {
@@ -33,12 +35,12 @@ export default function HomeScreen({ navigation }: any) {
             <StatusBar barStyle="light-content" />
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.header}>
-                    <Text style={styles.greeting}>Bonjour,</Text>
+                    <Text style={styles.greeting}>Bonjour, {user?.nom || 'Partenaire'}</Text>
                     <Text style={styles.title}>E-Tagmat Sport</Text>
                 </View>
 
                 <View style={styles.buttonContainer}>
-                    <Text style={styles.sectionTitle}>Sélectionnez votre profil</Text>
+                    <Text style={styles.sectionTitle}>Espace Prestataire</Text>
 
                     <TouchableOpacity
                         style={[styles.mainButton, styles.providerBtn]}
@@ -48,22 +50,8 @@ export default function HomeScreen({ navigation }: any) {
                             <Briefcase size={32} color={Theme.colors.white} />
                         </View>
                         <View style={styles.buttonTextContent}>
-                            <Text style={styles.buttonTitle}>Prestataire</Text>
+                            <Text style={styles.buttonTitle}>Mes Offres</Text>
                             <Text style={styles.buttonSubtitle}>Accédez aux appels d'offres et proposez vos services</Text>
-                        </View>
-                        <ChevronRight size={20} color={Theme.colors.white} opacity={0.5} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.mainButton, styles.clientBtn]}
-                        onPress={() => navigation.navigate('GroupageTrends')}
-                    >
-                        <View style={styles.buttonIcon}>
-                            <Users size={32} color={Theme.colors.white} />
-                        </View>
-                        <View style={styles.buttonTextContent}>
-                            <Text style={styles.buttonTitle}>Client / Bénéficiaire</Text>
-                            <Text style={styles.buttonSubtitle}>Optimisez vos envois avec nos tendances groupage</Text>
                         </View>
                         <ChevronRight size={20} color={Theme.colors.white} opacity={0.5} />
                     </TouchableOpacity>

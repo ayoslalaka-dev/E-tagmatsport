@@ -3,6 +3,7 @@ import { env } from './env';
 import { User } from '../entities/User';
 import { Tender } from '../entities/Tender';
 import { Offer } from '../entities/Offer';
+import { RefreshToken } from '../entities/RefreshToken';
 
 export const AppDataSource = new DataSource({
     type: 'postgres',
@@ -13,7 +14,8 @@ export const AppDataSource = new DataSource({
     database: env.DB_NAME,
     synchronize: env.NODE_ENV === 'development', // Auto-sync in dev only
     logging: env.NODE_ENV === 'development',
-    entities: [User, Tender, Offer],
+    entities: [User, Tender, Offer, RefreshToken],
     migrations: [],
     subscribers: [],
 });
+

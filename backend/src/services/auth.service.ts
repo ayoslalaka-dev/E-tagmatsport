@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { AppDataSource } from '../config/database';
 import { User, UserRole } from '../entities/User';
+import { RefreshToken } from '../entities/RefreshToken';
 import { env } from '../config/env';
 import { AppError } from '../middlewares/error.middleware';
 
@@ -17,10 +19,16 @@ interface LoginDTO {
     password: string;
 }
 
+interface TokenPair {
+    accessToken: string;
+    refreshToken: string;
+}
+
 export class AuthService {
     private userRepository = AppDataSource.getRepository(User);
+    private refreshTokenRepository = AppDataSource.getRepository(RefreshToken);
 
-    async register(data: RegisterDTO): Promise<{ user: Partial<User>; token: string }> {
+    async register(data: RegisterDTO): Promise<{ user: Partial<User>; tokens: TokenPair }> {
         // Check if user already exists
         const existingUser = await this.userRepository.findOne({ where: { email: data.email } });
         if (existingUser) {
@@ -40,15 +48,15 @@ export class AuthService {
 
         await this.userRepository.save(user);
 
-        // Generate token
-        const token = this.generateToken(user.id);
+        // Generate tokens
+        const tokens = await this.generateTokenPair(user.id);
 
         // Return user without password
         const { mot_de_passe, ...userWithoutPassword } = user;
-        return { user: userWithoutPassword, token };
+        return { user: userWithoutPassword, tokens };
     }
 
-    async login(data: LoginDTO): Promise<{ user: Partial<User>; token: string }> {
+    async login(data: LoginDTO): Promise<{ user: Partial<User>; tokens: TokenPair }> {
         // Find user
         const user = await this.userRepository.findOne({ where: { email: data.email } });
         if (!user) {
@@ -61,12 +69,63 @@ export class AuthService {
             throw new AppError('Invalid credentials', 401);
         }
 
-        // Generate token
-        const token = this.generateToken(user.id);
+        // Generate tokens
+        const tokens = await this.generateTokenPair(user.id);
 
         // Return user without password
         const { mot_de_passe, ...userWithoutPassword } = user;
-        return { user: userWithoutPassword, token };
+        return { user: userWithoutPassword, tokens };
+    }
+
+    async refreshToken(refreshToken: string): Promise<TokenPair> {
+        // Find the refresh token in database
+        const storedToken = await this.refreshTokenRepository.findOne({
+            where: { token: refreshToken, revoked: false }
+        });
+
+        if (!storedToken) {
+            throw new AppError('Invalid refresh token', 401);
+        }
+
+        // Check if token is expired
+        if (new Date() > storedToken.expiresAt) {
+            // Revoke the expired token
+            storedToken.revoked = true;
+            await this.refreshTokenRepository.save(storedToken);
+            throw new AppError('Refresh token expired', 401);
+        }
+
+        // Verify the user still exists
+        const user = await this.userRepository.findOne({ where: { id: storedToken.userId } });
+        if (!user) {
+            throw new AppError('User not found', 401);
+        }
+
+        // Revoke the old refresh token
+        storedToken.revoked = true;
+        await this.refreshTokenRepository.save(storedToken);
+
+        // Generate new token pair
+        return this.generateTokenPair(user.id);
+    }
+
+    async logout(refreshToken: string): Promise<void> {
+        // Find and revoke the refresh token
+        const storedToken = await this.refreshTokenRepository.findOne({
+            where: { token: refreshToken }
+        });
+
+        if (storedToken) {
+            storedToken.revoked = true;
+            await this.refreshTokenRepository.save(storedToken);
+        }
+    }
+
+    async revokeAllUserTokens(userId: string): Promise<void> {
+        await this.refreshTokenRepository.update(
+            { userId, revoked: false },
+            { revoked: true }
+        );
     }
 
     async getProfile(userId: string): Promise<Partial<User>> {
@@ -79,9 +138,52 @@ export class AuthService {
         return userWithoutPassword;
     }
 
-    private generateToken(userId: string): string {
+    private generateAccessToken(userId: string): string {
         return jwt.sign({ userId }, env.JWT_SECRET, {
-            expiresIn: env.JWT_EXPIRES_IN
+            expiresIn: env.JWT_ACCESS_EXPIRES_IN
         });
+    }
+
+    private async generateTokenPair(userId: string): Promise<TokenPair> {
+        // Generate access token
+        const accessToken = this.generateAccessToken(userId);
+
+        // Generate refresh token (random string)
+        const refreshTokenValue = crypto.randomBytes(64).toString('hex');
+
+        // Calculate refresh token expiry (parse the duration string)
+        const expiresIn = this.parseExpiry(env.JWT_REFRESH_EXPIRES_IN);
+        const expiresAt = new Date(Date.now() + expiresIn);
+
+        // Store refresh token in database
+        const refreshToken = this.refreshTokenRepository.create({
+            token: refreshTokenValue,
+            userId,
+            expiresAt
+        });
+        await this.refreshTokenRepository.save(refreshToken);
+
+        return {
+            accessToken,
+            refreshToken: refreshTokenValue
+        };
+    }
+
+    private parseExpiry(expiry: string): number {
+        const match = expiry.match(/^(\d+)([smhd])$/);
+        if (!match) {
+            return 7 * 24 * 60 * 60 * 1000; // Default: 7 days
+        }
+
+        const value = parseInt(match[1]);
+        const unit = match[2];
+
+        switch (unit) {
+            case 's': return value * 1000;
+            case 'm': return value * 60 * 1000;
+            case 'h': return value * 60 * 60 * 1000;
+            case 'd': return value * 24 * 60 * 60 * 1000;
+            default: return 7 * 24 * 60 * 60 * 1000;
+        }
     }
 }
