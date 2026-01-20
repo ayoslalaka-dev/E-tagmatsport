@@ -140,7 +140,11 @@ export class AuthService {
 
     private generateAccessToken(userId: string): string {
         return jwt.sign({ userId }, env.JWT_SECRET, {
+<<<<<<< HEAD
             expiresIn: env.JWT_ACCESS_EXPIRES_IN
+=======
+            expiresIn: env.JWT_EXPIRES_IN as any
+>>>>>>> 28858ac03e8e0bd1d8271eeca08054e2a134360d
         });
     }
 
